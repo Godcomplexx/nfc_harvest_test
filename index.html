@@ -70,7 +70,9 @@
 
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, W, H);
-      const scale = Math.min(W / sourceImage.width, H / sourceImage.height);
+      // Fill the whole 128x64 display while keeping the source aspect ratio.
+      // Parts outside the screen are cropped instead of adding side bars.
+      const scale = Math.max(W / sourceImage.width, H / sourceImage.height);
       const dw = Math.max(1, Math.round(sourceImage.width * scale));
       const dh = Math.max(1, Math.round(sourceImage.height * scale));
       const dx = Math.floor((W - dw) / 2);
@@ -92,10 +94,10 @@
           if (invert) lit = !lit;
           if (lit) bytes[y * (W / 8) + (x >> 3)] |= 0x80 >> (x & 7);
 
-          const color = lit ? 255 : 0;
-          rgba.data[p] = 0;
-          rgba.data[p + 1] = color;
-          rgba.data[p + 2] = color;
+          // Yellow preview matches the physical colour of the OLED panel.
+          rgba.data[p] = lit ? 255 : 0;
+          rgba.data[p + 1] = lit ? 210 : 0;
+          rgba.data[p + 2] = 0;
           rgba.data[p + 3] = 255;
         }
       }
