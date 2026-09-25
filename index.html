@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Картинка для NFC OLED 128×64</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { max-width: 760px; margin: 24px auto; padding: 0 16px; background:#111; color:#eee; }
+    canvas { width: 512px; max-width: 100%; image-rendering: pixelated; border:1px solid #555; background:#000; }
+    label, button { display:block; margin:14px 0; }
+    button { padding:14px 18px; cursor:pointer; font-size:1.05rem; }
+    button:disabled { cursor:not-allowed; opacity:.5; }
+    .row { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+    .row label { display:inline; }
+    #status { color:#7fe7ff; }
+    .warning { color:#ffd479; }
+  </style>
+</head>
+<body>
+  <h1>Картинка для NFC OLED</h1>
+  <p>Выберите изображение. Оно будет вписано в 128×64, превращено в чёрно-белое и записано прямо в NFC-метку.</p>
+
+  <input id="file" type="file" accept="image/*">
+  <div class="row">
+    <label>Порог: <input id="threshold" type="range" min="0" max="255" value="145"></label>
+    <label><input id="invert" type="checkbox"> Инвертировать</label>
+  </div>
+
+  <canvas id="preview" width="128" height="64"></canvas>
+  <p id="status">Сначала выберите картинку.</p>
+  <button id="writeNfc" type="button" disabled>Записать картинку по NFC</button>
+  <p id="support" class="warning"></p>
+
+  <h2>Как записать</h2>
+  <ol>
+    <li>Откройте эту страницу в Chrome на Android и выберите изображение.</li>
+    <li>Нажмите «Записать картинку по NFC» и разрешите браузеру доступ к NFC.</li>
+    <li>Поднесите телефон к большой квадратной антенне ST25DV16K.</li>
+    <li>Не убирайте телефон до сообщения «Запись завершена».</li>
+  </ol>
+
+  <script>
+    const W = 128, H = 64;
+    const fileInput = document.querySelector('#file');
+    const thresholdInput = document.querySelector('#threshold');
+    const invertInput = document.querySelector('#invert');
+    const canvas = document.querySelector('#preview');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const writeButton = document.querySelector('#writeNfc');
+    const status = document.querySelector('#status');
+    const support = document.querySelector('#support');
+    let sourceImage = null;
+    let encodedImage = '';
+
+    if (!window.isSecureContext) {
+      support.textContent = 'Web NFC требует HTTPS. Локальный HTML-файл не сможет обратиться к NFC.';
+    } else if (!('NDEFReader' in window)) {
+      support.textContent = 'Web NFC не поддерживается. Используйте Chrome на Android с включённым NFC.';
+    } else {
+      support.textContent = 'Web NFC доступен. После выбора картинки станет активна кнопка записи.';
+    }
+
+    function render() {
+      if (!sourceImage) return;
+
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, W, H);
+      const scale = Math.min(W / sourceImage.width, H / sourceImage.height);
+      const dw = Math.max(1, Math.round(sourceImage.width * scale));
+      const dh = Math.max(1, Math.round(sourceImage.height * scale));
+      const dx = Math.floor((W - dw) / 2);
+      const dy = Math.floor((H - dh) / 2);
+      ctx.drawImage(sourceImage, dx, dy, dw, dh);
+
+      const rgba = ctx.getImageData(0, 0, W, H);
+      const bytes = new Uint8Array(W * H / 8);
+      const threshold = Number(thresholdInput.value);
+      const invert = invertInput.checked;
+
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const p = (y * W + x) * 4;
+          const luminance = 0.2126 * rgba.data[p] +
+                            0.7152 * rgba.data[p + 1] +
+                            0.0722 * rgba.data[p + 2];
+          let lit = luminance < threshold;
+          if (invert) lit = !lit;
+          if (lit) bytes[y * (W / 8) + (x >> 3)] |= 0x80 >> (x & 7);
+
+          const color = lit ? 255 : 0;
+          rgba.data[p] = 0;
+          rgba.data[p + 1] = color;
+          rgba.data[p + 2] = color;
+          rgba.data[p + 3] = 255;
+        }
+      }
+      ctx.putImageData(rgba, 0, 0);
+
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      encodedImage = 'IMG1:' + btoa(binary);
+      writeButton.disabled = !window.isSecureContext || !('NDEFReader' in window);
+      status.textContent = `Картинка готова: ${bytes.length} байт. Нажмите кнопку записи.`;
+    }
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const image = new Image();
+      image.onload = () => {
+        sourceImage = image;
+        render();
+        URL.revokeObjectURL(image.src);
+      };
+      image.src = URL.createObjectURL(file);
+    });
+    thresholdInput.addEventListener('input', render);
+    invertInput.addEventListener('change', render);
+    writeButton.addEventListener('click', async () => {
+      if (!encodedImage) return;
+      writeButton.disabled = true;
+      status.textContent = 'Поднесите телефон к антенне ST25DV16K и держите неподвижно…';
+      try {
+        const ndef = new NDEFReader();
+        await ndef.write({
+          records: [{
+            recordType: 'text',
+            encoding: 'utf-8',
+            lang: 'en',
+            data: encodedImage
+          }]
+        });
+        status.textContent = 'Запись завершена! OLED обновится примерно через одну секунду.';
+      } catch (error) {
+        status.textContent = `Ошибка NFC: ${error.message || error}`;
+      } finally {
+        writeButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
