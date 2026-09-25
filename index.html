@@ -112,8 +112,7 @@
       encodedImage = encodePackBits(bytes);
       const fitsTag = encodedImage.length <= 450;
       writeButton.disabled = !window.isSecureContext ||
-                             !('NDEFReader' in window) || !fitsTag ||
-                             vehAbortController !== null;
+                             !('NDEFReader' in window) || !fitsTag;
       status.textContent = fitsTag
         ? 'Картинка готова к записи.'
         : `Картинка слишком сложная: ${encodedImage.length} байт. Измените порог или выберите другую.`;
@@ -184,7 +183,6 @@
       vehAbortController = new AbortController();
       testVehButton.disabled = true;
       stopVehButton.disabled = false;
-      writeButton.disabled = true;
       status.textContent = 'NFC-сканирование запускается…';
 
       try {
@@ -210,6 +208,10 @@
 
     writeButton.addEventListener('click', async () => {
       if (!encodedImage) return;
+      if (vehAbortController) {
+        stopVehTest();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       writeButton.disabled = true;
       status.textContent = 'Поднесите телефон к антенне ST25DV16K и держите неподвижно…';
       try {
@@ -228,7 +230,7 @@
       } catch (error) {
         status.textContent = `Ошибка NFC: ${error.message || error}`;
       } finally {
-        writeButton.disabled = false;
+        writeButton.disabled = encodedImage.length > 450;
       }
     });
   </script>
