@@ -29,6 +29,7 @@
 
   <canvas id="preview" width="128" height="64"></canvas>
   <p id="status">Сначала выберите картинку.</p>
+  <p id="sizeInfo"></p>
   <button id="writeNfc" type="button" disabled>Записать картинку по NFC</button>
   <p id="support" class="warning"></p>
 
@@ -49,6 +50,7 @@
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const writeButton = document.querySelector('#writeNfc');
     const status = document.querySelector('#status');
+    const sizeInfo = document.querySelector('#sizeInfo');
     const support = document.querySelector('#support');
     let sourceImage = null;
     let encodedImage = null;
@@ -98,12 +100,13 @@
       ctx.putImageData(rgba, 0, 0);
 
       encodedImage = encodePackBits(bytes);
-      const fitsTag = encodedImage.length <= 900;
+      const fitsTag = encodedImage.length <= 450;
       writeButton.disabled = !window.isSecureContext ||
                              !('NDEFReader' in window) || !fitsTag;
       status.textContent = fitsTag
-        ? `Картинка готова: сжато с ${bytes.length} до ${encodedImage.length} байт.`
+        ? 'Картинка готова к записи.'
         : `Картинка слишком сложная: ${encodedImage.length} байт. Измените порог или выберите другую.`;
+      sizeInfo.textContent = `Размер NFC-данных: ${encodedImage.length} байт.`;
     }
 
     function encodePackBits(data) {
