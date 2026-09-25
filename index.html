@@ -76,12 +76,12 @@
 
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, W, H);
-      // Portrait images are rotated to landscape, then the complete image is
-      // fitted into 128x64. Small images are never enlarged.
+      // Portrait images are rotated to landscape, then enlarged as much as
+      // possible while keeping the complete image and its aspect ratio.
       const rotatePortrait = sourceImage.height > sourceImage.width;
       const orientedWidth = rotatePortrait ? sourceImage.height : sourceImage.width;
       const orientedHeight = rotatePortrait ? sourceImage.width : sourceImage.height;
-      const scale = Math.min(1, W / orientedWidth, H / orientedHeight);
+      const scale = Math.min(W / orientedWidth, H / orientedHeight);
       const dw = Math.max(1, Math.round(sourceImage.width * scale));
       const dh = Math.max(1, Math.round(sourceImage.height * scale));
       ctx.save();
