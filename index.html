@@ -31,6 +31,8 @@
   <p id="status">Сначала выберите картинку.</p>
   <p id="sizeInfo"></p>
   <button id="writeNfc" type="button" disabled>Записать картинку по NFC</button>
+  <button id="testVeh" type="button" disabled>Запустить непрерывный тест VEH</button>
+  <button id="stopVeh" type="button" disabled>Остановить тест VEH</button>
   <p id="support" class="warning"></p>
 
   <h2>Как записать</h2>
@@ -51,11 +53,14 @@
     const canvas = document.querySelector('#preview');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const writeButton = document.querySelector('#writeNfc');
+    const testVehButton = document.querySelector('#testVeh');
+    const stopVehButton = document.querySelector('#stopVeh');
     const status = document.querySelector('#status');
     const sizeInfo = document.querySelector('#sizeInfo');
     const support = document.querySelector('#support');
     let sourceImage = null;
     let encodedImage = null;
+    let vehAbortController = null;
 
     if (!window.isSecureContext) {
       support.textContent = 'Web NFC требует HTTPS. Локальный HTML-файл не сможет обратиться к NFC.';
@@ -63,6 +68,7 @@
       support.textContent = 'Web NFC не поддерживается. Используйте Chrome на Android с включённым NFC.';
     } else {
       support.textContent = 'Web NFC доступен. После выбора картинки станет активна кнопка записи.';
+      testVehButton.disabled = false;
     }
 
     function render() {
@@ -106,7 +112,8 @@
       encodedImage = encodePackBits(bytes);
       const fitsTag = encodedImage.length <= 450;
       writeButton.disabled = !window.isSecureContext ||
-                             !('NDEFReader' in window) || !fitsTag;
+                             !('NDEFReader' in window) || !fitsTag ||
+                             vehAbortController !== null;
       status.textContent = fitsTag
         ? 'Картинка готова к записи.'
         : `Картинка слишком сложная: ${encodedImage.length} байт. Измените порог или выберите другую.`;
@@ -162,6 +169,45 @@
     });
     thresholdInput.addEventListener('input', render);
     invertInput.addEventListener('change', render);
+
+    function stopVehTest(message) {
+      if (vehAbortController) vehAbortController.abort();
+      vehAbortController = null;
+      testVehButton.disabled = !('NDEFReader' in window);
+      stopVehButton.disabled = true;
+      if (sourceImage) render();
+      if (message) status.textContent = message;
+    }
+
+    testVehButton.addEventListener('click', async () => {
+      if (vehAbortController) return;
+      vehAbortController = new AbortController();
+      testVehButton.disabled = true;
+      stopVehButton.disabled = false;
+      writeButton.disabled = true;
+      status.textContent = 'NFC-сканирование запускается…';
+
+      try {
+        const reader = new NDEFReader();
+        reader.onreading = () => {
+          status.textContent = 'NFC-метка найдена. Держите телефон на антенне и измеряйте VEH.';
+        };
+        reader.onreadingerror = () => {
+          status.textContent = 'Поле NFC активно. Держите телефон на антенне и измеряйте VEH.';
+        };
+        await reader.scan({ signal: vehAbortController.signal });
+        status.textContent = 'Непрерывное NFC-сканирование активно. Экран телефона не выключайте.';
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          stopVehTest(`Ошибка теста NFC: ${error.message || error}`);
+        }
+      }
+    });
+
+    stopVehButton.addEventListener('click', () => {
+      stopVehTest('Тест VEH остановлен.');
+    });
+
     writeButton.addEventListener('click', async () => {
       if (!encodedImage) return;
       writeButton.disabled = true;
