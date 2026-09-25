@@ -51,7 +51,7 @@
     const status = document.querySelector('#status');
     const support = document.querySelector('#support');
     let sourceImage = null;
-    let encodedImage = '';
+    let encodedImage = null;
 
     if (!window.isSecureContext) {
       support.textContent = 'Web NFC требует HTTPS. Локальный HTML-файл не сможет обратиться к NFC.';
@@ -97,11 +97,49 @@
       }
       ctx.putImageData(rgba, 0, 0);
 
-      let binary = '';
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      encodedImage = 'IMG1:' + btoa(binary);
-      writeButton.disabled = !window.isSecureContext || !('NDEFReader' in window);
-      status.textContent = `Картинка готова: ${bytes.length} байт. Нажмите кнопку записи.`;
+      encodedImage = encodePackBits(bytes);
+      const fitsTag = encodedImage.length <= 900;
+      writeButton.disabled = !window.isSecureContext ||
+                             !('NDEFReader' in window) || !fitsTag;
+      status.textContent = fitsTag
+        ? `Картинка готова: сжато с ${bytes.length} до ${encodedImage.length} байт.`
+        : `Картинка слишком сложная: ${encodedImage.length} байт. Измените порог или выберите другую.`;
+    }
+
+    function encodePackBits(data) {
+      const output = [];
+      let position = 0;
+
+      while (position < data.length) {
+        let repeat = 1;
+        while (position + repeat < data.length && repeat < 128 &&
+               data[position + repeat] === data[position]) repeat++;
+
+        if (repeat >= 3) {
+          output.push(257 - repeat, data[position]);
+          position += repeat;
+          continue;
+        }
+
+        const literalStart = position;
+        position += repeat;
+        while (position < data.length && position - literalStart < 128) {
+          repeat = 1;
+          while (position + repeat < data.length && repeat < 128 &&
+                 data[position + repeat] === data[position]) repeat++;
+          if (repeat >= 3) break;
+          if (position - literalStart + repeat > 128) break;
+          position += repeat;
+        }
+
+        const literalLength = position - literalStart;
+        output.push(literalLength - 1);
+        for (let i = 0; i < literalLength; i++) {
+          output.push(data[literalStart + i]);
+        }
+      }
+
+      return new Uint8Array(output);
     }
 
     fileInput.addEventListener('change', () => {
@@ -122,13 +160,15 @@
       writeButton.disabled = true;
       status.textContent = 'Поднесите телефон к антенне ST25DV16K и держите неподвижно…';
       try {
+        const payload = new Uint8Array(4 + encodedImage.length);
+        payload.set([0x49, 0x4D, 0x47, 0x32]); // "IMG2"
+        payload.set(encodedImage, 4);
         const ndef = new NDEFReader();
         await ndef.write({
           records: [{
-            recordType: 'text',
-            encoding: 'utf-8',
-            lang: 'en',
-            data: encodedImage
+            recordType: 'mime',
+            mediaType: 'application/x-nfc-oled',
+            data: payload
           }]
         });
         status.textContent = 'Запись завершена! OLED обновится примерно через одну секунду.';
