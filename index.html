@@ -171,7 +171,7 @@
             data: payload
           }]
         });
-        status.textContent = 'Запись завершена! OLED обновится примерно через одну секунду.';
+        status.textContent = 'Запись завершена! OLED обновится в течение 5–6 секунд.';
       } catch (error) {
         status.textContent = `Ошибка NFC: ${error.message || error}`;
       } finally {
