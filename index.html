@@ -76,14 +76,19 @@
 
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, W, H);
-      // Fill the whole 128x64 display while keeping the source aspect ratio.
-      // Parts outside the screen are cropped instead of adding side bars.
-      const scale = Math.max(W / sourceImage.width, H / sourceImage.height);
+      // Portrait images are rotated to landscape, then the complete image is
+      // fitted into 128x64. Small images are never enlarged.
+      const rotatePortrait = sourceImage.height > sourceImage.width;
+      const orientedWidth = rotatePortrait ? sourceImage.height : sourceImage.width;
+      const orientedHeight = rotatePortrait ? sourceImage.width : sourceImage.height;
+      const scale = Math.min(1, W / orientedWidth, H / orientedHeight);
       const dw = Math.max(1, Math.round(sourceImage.width * scale));
       const dh = Math.max(1, Math.round(sourceImage.height * scale));
-      const dx = Math.floor((W - dw) / 2);
-      const dy = Math.floor((H - dh) / 2);
-      ctx.drawImage(sourceImage, dx, dy, dw, dh);
+      ctx.save();
+      ctx.translate(W / 2, H / 2);
+      if (rotatePortrait) ctx.rotate(Math.PI / 2);
+      ctx.drawImage(sourceImage, -dw / 2, -dh / 2, dw, dh);
+      ctx.restore();
 
       const rgba = ctx.getImageData(0, 0, W, H);
       const bytes = new Uint8Array(W * H / 8);
